@@ -3,6 +3,8 @@ using Pol: Pol, Shadowed, primal, shadow, checkpoints, scratch, outputs,
     retract!, carve, scratchspace, release!
 using Test
 
+using Republic: public_names, exported_names
+
 # a downstream "primitive" declaring its buffers — pure data, no allocation
 dummy_kernel!(y, x; partial) = (partial .= x; copyto!(y, partial))
 Pol.outputs(::typeof(dummy_kernel!), x) = (; y = Undef(x))
@@ -298,16 +300,18 @@ Pol.release!(f::Freeable) = f.freed[] = true
     end
 
     @testset "visibility" begin
+        _public = public_names(Pol)
+        _exported = exported_names(Pol)
         # the shell vocabulary is exported: what a verb definition spends
         for name in (:Undef, :Similar, :Arena, :scratchspace,
                      :outputs, :checkpoints, :scratch)
-            @test Base.isexported(Pol, name)
+            @test name in _exported
         end
         # the machinery is public, not exported: reached qualified
         for name in (:Space, :Frame, :alloc, :Mark, :reset!, :watermark, :mark,
                      :retract!, :carve, :release!, :Shadowed, :primal, :shadow)
-            @test Base.ispublic(Pol, name)
-            @test !Base.isexported(Pol, name)
+            @test name in _public
+            @test !(name in _exported)
         end
     end
 end
