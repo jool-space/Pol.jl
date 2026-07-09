@@ -3,7 +3,8 @@ using Pol: Pol, Shadowed, primal, shadow, checkpoints, scratch, outputs,
     retract!, carve, scratchspace, release!
 using Test
 
-using Republic: public_names, exported_names
+using Republic
+using JLArrays: JLArray, jl   # the GPUArrays reference array: loads GPUArraysExt
 
 # a downstream "primitive" declaring its buffers — pure data, no allocation
 dummy_kernel!(y, x; partial) = (partial .= x; copyto!(y, partial))
@@ -311,19 +312,44 @@ Pol.release!(f::Freeable) = f.freed[] = true
         @test release!(rand(2)) === nothing
     end
 
+    @testset "GPUArrays extension" begin
+        @test !isnothing(Base.get_extension(Pol, :GPUArraysExt))
+
+        # release! is eager for AbstractGPUArrays: a frame closing frees
+        # device memory immediately, not at the next GC
+        x = jl(rand(Float32, 4))
+        local b
+        scratchspace(Similar(x)) do frame
+            b = alloc(frame, Float32, 2)
+            @test b isa JLArray{Float32,1}
+            b .= 1f0
+            @test Array(b) == [1f0, 1f0]           # alive within the frame
+        end
+        @test_throws ArgumentError Array(b)        # freed at block close
+        @test release!(b) === nothing              # double-free is a no-op
+
+        # an arena over a device byte slab: the generic carve derives a
+        # native device array (GPUArrays wraps view/reinterpret/reshape),
+        # aliasing the slab's bytes
+        slab = JLArray{UInt8}(undef, 4096)
+        a = Arena(slab)
+        u = alloc(a, Float32, 2, 3)
+        @test u isa JLArray{Float32,2} && size(u) == (2, 3)
+        u .= 2f0
+        @test all(Array(reinterpret(Float32, slab[1:24])) .== 2f0)
+    end
+
     @testset "visibility" begin
-        _public = public_names(Pol)
-        _exported = exported_names(Pol)
         # the shell vocabulary is exported: what a verb definition spends
         for name in (:Undef, :Similar, :Arena, :scratchspace,
                      :outputs, :checkpoints, :scratch)
-            @test name in _exported
+            @test Republic.isexported(Pol, name)
         end
         # the machinery is public, not exported: reached qualified
         for name in (:Space, :Frame, :alloc, :Mark, :reset!, :watermark, :mark,
                      :retract!, :carve, :release!, :Shadowed, :primal, :shadow)
-            @test name in _public
-            @test !(name in _exported)
+            @test Republic.ispublic(Pol, name)
+            @test !Republic.isexported(Pol, name)
         end
     end
 end
