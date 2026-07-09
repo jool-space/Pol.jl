@@ -59,7 +59,7 @@ the end throws.
   materializes against, and the GC-owned [`Similar`](@ref) default.
 - [Arenas](@ref) — the [`Arena`](@ref) bump allocator, [`mark`](@ref)s, and
   bulk reclamation.
-- [Frames & scratch space](@ref) — [`scratchspace`](@ref) blocks and
+- [Scratchspaces](@ref) — [`scratchspace`](@ref) blocks and
   frame-scoped lifetimes.
 - [Descriptions](@ref) — how a kernel describes the buffers it needs as
   [`Undef`](@ref)s: its [`outputs`](@ref), [`checkpoints`](@ref), and

@@ -2,7 +2,7 @@
 CurrentModule = Pol
 ```
 
-# Frames & scratch space
+# Scratchspaces
 
 A [`scratchspace`](@ref) block opens a [`Frame`](@ref) on a space and
 guarantees that everything allocated from the frame is reclaimed when the
@@ -22,5 +22,5 @@ for array families with eager reclamation (e.g. `CUDA.unsafe_free!`).
 
 ```@autodocs
 Modules = [Pol]
-Pages = ["scratchspace.jl"]
+Pages = ["src/scratchspace.jl"]
 ```

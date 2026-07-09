@@ -19,5 +19,5 @@ returns the gradient buffer or `nothing`, so a bare array passed where a
 
 ```@autodocs
 Modules = [Pol]
-Pages = ["shadow.jl"]
+Pages = ["src/shadow.jl"]
 ```

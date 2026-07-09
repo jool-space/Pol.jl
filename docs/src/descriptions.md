@@ -28,5 +28,5 @@ of a given kind simply defines no method.
 
 ```@autodocs
 Modules = [Pol]
-Pages = ["descriptions.jl"]
+Pages = ["src/descriptions.jl"]
 ```

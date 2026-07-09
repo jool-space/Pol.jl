@@ -17,5 +17,5 @@ what a kernel materializes *from* them is covered under [Descriptions](@ref).
 
 ```@autodocs
 Modules = [Pol]
-Pages = ["alloc.jl"]
+Pages = ["src/space.jl"]
 ```

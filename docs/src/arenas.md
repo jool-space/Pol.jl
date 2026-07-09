@@ -22,5 +22,5 @@ task-local, so they take no locks.
 
 ```@autodocs
 Modules = [Pol]
-Pages = ["arena.jl"]
+Pages = ["src/arena.jl"]
 ```
