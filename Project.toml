@@ -1,6 +1,6 @@
 name = "Pol"
 uuid = "4d414b72-cacd-4c1f-bb87-6585853948d5"
-version = "1.0.0-DEV"
+version = "0.1.0"
 authors = ["AntonOresten <antonoresten@proton.me> and contributors"]
 
 [workspace]
