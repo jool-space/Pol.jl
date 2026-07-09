@@ -9,4 +9,4 @@ Memory management primitives: protocols for kernels to describe the buffers
 they need as data, one verb that materializes descriptions into a space of the
 caller's choosing, and a bump-allocator with frame-scoped lifetimes.
 
-See the https://docs.jool.space/Pol.jl for more details.
+See https://docs.jool.space/Pol.jl for more details.
