@@ -12,8 +12,8 @@ caller's choosing, and a bump-allocator with frame-scoped lifetimes.
 
 ```julia
 using Pkg
-Registry.add("https://registry.jool.space")
-Pkg.add(url = "https://github.com/jool-space/Pol.jl")
+Registry.add(url="https://registry.jool.space")
+Pkg.add("Pol")
 ```
 
 ## Quick start
@@ -56,9 +56,8 @@ the end throws.
 ## Manual
 
 - [Spaces](@ref) — the [`alloc`](@ref) verb, the [`Space`](@ref) it
-  materializes against, and the GC-owned [`Similar`](@ref) default.
-- [Arenas](@ref) — the [`Arena`](@ref) bump allocator, [`mark`](@ref)s, and
-  bulk reclamation.
+  materializes against, the GC-owned [`Similar`](@ref) default, and the
+  [`Arena`](@ref) bump allocator.
 - [Scratchspaces](@ref) — [`scratchspace`](@ref) blocks and
   frame-scoped lifetimes.
 - [Descriptions](@ref) — how a kernel describes the buffers it needs as

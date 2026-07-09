@@ -9,6 +9,13 @@ projects = ["test", "docs"]
 [deps]
 Republic = "27243419-9dde-4721-b67c-fd63626fea7f"
 
+[weakdeps]
+GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+
+[extensions]
+GPUArraysExt = ["GPUArrays"]
+
 [compat]
+GPUArrays = "11"
 Republic = "2"
 julia = "1.10"

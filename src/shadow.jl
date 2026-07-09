@@ -1,7 +1,7 @@
 """
     Shadowed(primal, shadow)
-    Shadowed(primal)
-    Shadowed(primal, T::Type)
+    Shadowed(primal, [T=eltype(primal)])
+    Shadowed(space::Space, primal, [T=eltype(primal)])
 
 A primal array paired with a gradient buffer, passed positionally to
 in-place `∇`-kernels: the backward pass reads `primal`s and writes input
@@ -25,8 +25,7 @@ struct Shadowed{P,S}
     shadow::S
 end
 
-Shadowed(x) = Shadowed(x, similar(x))
-Shadowed(x, ::Type{T}) where {T} = Shadowed(x, similar(x, T))
+Shadowed(x::AbstractArray, T::Type=eltype(x)) = Shadowed(x, similar(x, T))
 Shadowed(space::Space, x::AbstractArray, T::Type=eltype(x)) = Shadowed(x, alloc(space, Undef(x, T)))
 
 """

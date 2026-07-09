@@ -14,7 +14,7 @@ slab's base: CUDA allocators return 256-aligned bases (so the default meets
 cuBLASLt's workspace requirement), a Julia `Vector`'s base is only 32/64,
 `Mmap.mmap`'s is page-aligned.
 
-Arenas are task-local: no lock, no sharing across tasks.
+Arenas are task-local, so they take no locks.
 """
 mutable struct Arena{S<:AbstractVector{UInt8}} <: Space
     const slab::S
@@ -90,7 +90,7 @@ all passes of a warmup.
 watermark(a::Arena) = a.watermark
 
 """
-    alloc(arena::Arena, T, dims...) -> AbstractArray{T}
+    alloc(space::Arena, T, dims) -> AbstractArray{T}
 
 Carve a `dims`-shaped array of bitstype `T` from the arena: round the offset
 up to the arena's alignment (never below `T`'s own), take the next

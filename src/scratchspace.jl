@@ -4,8 +4,9 @@
 Release one frame buffer back to its space when a [`scratchspace`](@ref)
 block closes. The default is a no-op — GC-owned buffers just become
 garbage. Array families that benefit from eager reclamation overload it
-on the buffer type, e.g. `Pol.release!(x::CuArray) = CUDA.unsafe_free!(x)`
-returns memory to the pool without waiting for the GC.
+on the buffer type; a package extension already provides
+`release!(x::AbstractGPUArray) = GPUArrays.unsafe_free!(x)`, freeing the
+device memory immediately instead of when the GC finalizes the array.
 """
 release!(x) = nothing
 

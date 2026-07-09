@@ -16,7 +16,6 @@ makedocs(;
         "Home" => "index.md",
         "Manual" => [
             "Spaces" => "spaces.md",
-            "Arenas" => "arenas.md",
             "Scratchspaces" => "scratchspaces.md",
             "Descriptions" => "descriptions.md",
             "Shadows" => "shadows.md",

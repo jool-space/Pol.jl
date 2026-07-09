@@ -22,9 +22,16 @@ Undef(T::Type, dims::Integer...) = Undef{T}(dims...)
 Undef(x::AbstractArray, T::Type=eltype(x)) = Undef(T, size(x))
 Undef(x::AbstractArray, dims::Dims) = Undef(eltype(x), dims)
 
-# materialize a description: one Undef, or a whole NamedTuple spec name for name
-alloc(space, u::Undef{T}) where {T} = alloc(space, T, u.dims)
-alloc(space, spec::NamedTuple) = map(u -> alloc(space, u), spec)
+"""
+    alloc(space, u::Undef)
+    alloc(space, spec::NamedTuple)
+
+Materialize an [`Undef`](@ref) description — or a whole `NamedTuple` spec
+of them, name for name — from `space`. Specs nest: a `NamedTuple` value
+materializes recursively, so buffers bundled under one name stay bundled.
+"""
+alloc(space::Space, u::Undef{T}) where {T} = alloc(space, T, u.dims)
+alloc(space::Space, spec::NamedTuple) = map(u -> alloc(space, u), spec)
 
 """
     outputs(f, args...; kwargs...) -> NamedTuple

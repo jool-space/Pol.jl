@@ -4,18 +4,30 @@ CurrentModule = Pol
 
 # Spaces
 
-A [`Space`](@ref) is anywhere an array can be materialized from. The one verb
-[`alloc`](@ref) turns an [`Undef`](@ref) description — an element type and a
-shape, no memory — into a real array against the space the caller chose; every
-space reduces to the single leaf method `alloc(space, T, dims::Dims)`.
+Pol ships two spaces: the GC-owned [`Similar`](@ref) default and the
+[`Arena`](@ref) bump allocator. The [`Frame`](@ref)s a
+[`scratchspace`](@ref) block opens are spaces too.
 
-[`Similar`](@ref) is the GC-owned space around an exemplar array: `alloc`
-against it is `similar(x, T, dims)` — same array family and device, lifetimes
-by scope — the natural default when no arena is in play. The bump-allocator
-[`Arena`](@ref) and the frames a [`scratchspace`](@ref) opens are spaces too;
-what a kernel materializes *from* them is covered under [Descriptions](@ref).
+```@docs
+Space
+alloc(space::Space, ::Type{T}, dims::Integer...) where {T}
+```
 
-```@autodocs
-Modules = [Pol]
-Pages = ["src/space.jl"]
+## `Similar`
+
+```@docs
+Similar
+```
+
+## `Arena`
+
+```@docs
+Arena
+alloc(a::Arena, ::Type{T}, dims::Dims) where T
+Mark
+mark
+retract!
+reset!
+watermark
+carve
 ```

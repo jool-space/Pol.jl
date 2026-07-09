@@ -22,11 +22,10 @@ kernel function and split by lifetime:
   live and die within a frame; the one-step form materializes against a
   [`Frame`](@ref) only.
 
-Each protocol has a space-first (or frame-first) form that materializes the
-description on the spot, ready to splat into the call. A pass that needs none
-of a given kind simply defines no method.
-
-```@autodocs
-Modules = [Pol]
-Pages = ["src/descriptions.jl"]
+```@docs
+Undef
+alloc(space::Space, u::Undef{T}) where {T}
+outputs
+checkpoints
+scratch
 ```

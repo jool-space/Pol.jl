@@ -3,10 +3,12 @@ module Pol
 using Republic
 
 include("space.jl")
-export Similar
 @public Space, alloc
 
-include("arena.jl")
+include("Similar.jl")
+export Similar
+
+include("Arena.jl")
 export Arena
 @public Mark, reset!, watermark, mark, retract!, carve
 
