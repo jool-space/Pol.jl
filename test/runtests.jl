@@ -70,6 +70,7 @@ Pol.release!(f::Freeable) = f.freed[] = true
         @test Undef(x) === Undef{Float32}((3, 4))
         @test Undef(x, (5,)) === Undef{Float32}((5,))
         @test Undef{Float64}(2, 3) === Undef{Float64}((2, 3))
+        @test Undef(Float64, 2, 3) === Undef{Float64}((2, 3))
     end
 
     @testset "declaration protocols" begin
@@ -99,6 +100,8 @@ Pol.release!(f::Freeable) = f.freed[] = true
         # a leading space materializes the declaration on the spot
         out = @inferred outputs(Similar(x), dummy_kernel!, x)
         @test out.y isa Vector{Float64} && size(out.y) == (4,)
+        cp = @inferred checkpoints(Similar(x), dummy_kernel!, y, x)
+        @test cp.stats isa Vector{Float64} && size(cp.stats) == (1,)
 
         # scratch's one-step form demands a Frame — proof of an open block;
         # the two-step alloc(space, scratch(f, ...)) remains for the rest
@@ -132,6 +135,15 @@ Pol.release!(f::Freeable) = f.freed[] = true
         reset!(a)
         v2 = alloc(a, Float32, 6)
         @test v2[1] == 1.0f0
+
+        # a non-Vector slab takes the generic carve: a reinterpreted view,
+        # GC-rooted through the slab, still aliasing its bytes
+        s = view(Vector{UInt8}(undef, 8192), 1:4096)
+        b = Arena(s)
+        u = alloc(b, Float32, 2, 3)
+        @test u isa AbstractMatrix{Float32} && size(u) == (2, 3)
+        u .= 2.0f0
+        @test all(reinterpret(Float32, view(s, 1:24)) .== 2.0f0)
     end
 
     @testset "arena: alignment argument" begin
