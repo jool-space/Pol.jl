@@ -29,9 +29,18 @@ Undef(x::AbstractArray, dims::Dims) = Undef(eltype(x), dims)
 Materialize an [`Undef`](@ref) description — or a whole `NamedTuple` spec
 of them, name for name — from `space`. Specs nest: a `NamedTuple` value
 materializes recursively, so buffers bundled under one name stay bundled.
+A spec value that is already an array passes through untouched — merge an
+owned array over its `Undef` *before* the `alloc` and that buffer is never
+materialized, which is how a caller aliases one output in place (e.g.
+`S′ = S`) while the rest allocate.
 """
 alloc(space::Space, u::Undef{T}) where {T} = alloc(space, T, u.dims)
 alloc(space::Space, spec::NamedTuple) = map(u -> alloc(space, u), spec)
+alloc(::Space, x::AbstractArray) = x
+
+# ambient forms (see `withspace`)
+alloc(u::Undef) = alloc(ambientspace(), u)
+alloc(spec::NamedTuple) = alloc(ambientspace(), spec)
 
 """
     outputs(f, args...; kwargs...) -> NamedTuple

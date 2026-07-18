@@ -46,6 +46,19 @@ function softmax(x; space = Similar(x))
 end
 ```
 
+That functional shell is what [`Allocating`](@ref) writes for you — with a
+NamedTuple-out verb `softmax!((; y), x; tmp)` it is one line, callable
+explicitly or against [the ambient space](@ref "The ambient space"):
+
+```julia
+const softmax = Allocating(softmax!)
+
+y = softmax(arena, x).y      # outputs from the arena, scratch framed
+withspace(arena) do
+    y = softmax(x).y         # same call, space from scope
+end
+```
+
 Arena allocations are aligned arrays (256-byte by default; see
 [`Arena`](@ref)`(slab; alignment)`) aliasing a single preallocated byte slab —
 for a plain `Vector{UInt8}` slab they are `unsafe_wrap`ped `Array`s, not
@@ -63,6 +76,7 @@ the end throws.
 - [Descriptions](@ref) — how a kernel describes the buffers it needs as
   [`Undef`](@ref)s: its [`outputs`](@ref), [`checkpoints`](@ref), and
   [`scratch`](@ref).
+- [Verbs](@ref) — the [`Allocating`](@ref) form of a mutating verb.
 - [Shadows](@ref) — pairing primals with gradient buffers for reverse-mode
   kernels.
 

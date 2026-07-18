@@ -1,10 +1,22 @@
 using Pol: Pol, Shadowed, primal, shadow, checkpoints, scratch, outputs,
     Space, Frame, Arena, Mark, Undef, Similar, alloc, reset!, watermark, mark,
-    retract!, carve, scratchspace, release!
+    retract!, carve, scratchspace, release!, Allocating, takes_space,
+    withspace, ambientspace
 using Test
 
 using Republic
 using JLArrays: JLArray, jl   # the GPUArrays reference array: loads GPUArraysExt
+
+# An array on a device that is mid-capture. Stands in for a `CuArray` while a
+# stream capture is recording — the real predicate lives in Pol's CUDACoreExt,
+# and dispatches on exactly this exemplar, so the doctrine is testable on CPU.
+struct Recording{T,N} <: AbstractArray{T,N}
+    a::Array{T,N}
+end
+Base.size(r::Recording) = size(r.a)
+Base.getindex(r::Recording, i::Int...) = getindex(r.a, i...)
+Base.similar(r::Recording, ::Type{T}, dims::Dims) where {T} = Recording(similar(r.a, T, dims))
+Pol.capturing(::Recording) = true
 
 # a downstream "primitive" declaring its buffers — pure data, no allocation
 dummy_kernel!(y, x; partial) = (partial .= x; copyto!(y, partial))
@@ -20,6 +32,21 @@ function dummy_kernel(x; space = Similar(x))
     end
     return y
 end
+
+# NamedTuple-out verbs for the Allocating form: outputs destructured first;
+# one scratchless, one whose defaulted scratch materializes from `space`
+square!((; y), x) = (y .= x .* x; nothing)
+Pol.outputs(::typeof(square!), x) = (; y = Undef(x))
+
+function scaled!((; y), x; space = Similar(x),
+                 scratch = alloc(space, Pol.scratch(scaled!, x)))
+    scratch.tmp .= x .* 2
+    copyto!(y, scratch.tmp)
+    return
+end
+Pol.outputs(::typeof(scaled!), x) = (; y = Undef(x))
+Pol.scratch(::typeof(scaled!), x) = (; tmp = Undef(x))
+Pol.@takes_space scaled!
 
 # a GPU-like array family: eager reclamation via release!, observably
 struct Freeable{T,N} <: AbstractArray{T,N}
@@ -109,10 +136,106 @@ Pol.release!(f::Freeable) = f.freed[] = true
         @test_throws MethodError scratch(Similar(x), dummy_kernel!, y, x)
     end
 
+    @testset "Allocating" begin
+        x = rand(4)
+
+        @test takes_space(square!) == false
+        @test takes_space(scaled!) == true
+        @test repr(Allocating(square!)) == "Allocating(square!)"
+
+        # scratchless verb: called bare, no frame opened on its behalf
+        square = Allocating(square!)
+        out = square(Similar(x), x)
+        @test out.y == x .* x
+
+        # space-taking verb: defaulted scratch lands in the wrapper's frame
+        scaled = Allocating(scaled!)
+        @test scaled(Similar(x), x).y == x .* 2
+
+        # on an arena: outputs carve below the frame's mark and survive its
+        # retract; the scratch above the mark is reclaimed
+        a = Arena(Vector{UInt8}(undef, 4096))
+        out = scaled(a, x)
+        @test out.y == x .* 2
+        @test a.offset == 4 * sizeof(Float64)          # just the output remains
+        @test watermark(a) > a.offset                  # scratch was carved, then retracted
+
+        # `space` may itself be a frame: outputs take the caller's frame lifetime
+        scratchspace(a) do frame
+            @test scaled(frame, x).y == x .* 2
+        end
+        @test a.offset == 4 * sizeof(Float64)          # outer close reclaimed those too
+
+        # partially-materialized specs: an array in a spec passes through
+        spec = (; fresh = Undef(x), owned = x)
+        m = alloc(Similar(x), spec)
+        @test m.owned === x && m.fresh isa Vector{Float64}
+
+        # output_override: the overridden entry is never allocated
+        reset!(a)
+        pre = zeros(4)
+        out = scaled(a, x; output_override = (; y = pre))
+        @test out.y === pre && pre == x .* 2
+        @test a.offset == 0                            # y owned, scratch retracted: nothing remains
+    end
+
     @testset "Similar space" begin
         x = rand(Float32, 4)
         @test alloc(Similar(x), Float64, 2, 3) isa Matrix{Float64}
         @test alloc(Similar(x), Undef(x)) isa Vector{Float32}
+    end
+
+    @testset "ambient space" begin
+        x = rand(4)
+        n = 4 * sizeof(Float64)                        # bytes per test vector
+
+        # unscoped: the zero-arg accessor throws, the defaulted one falls back
+        @test_throws ArgumentError ambientspace()
+        s = Similar(x)
+        @test ambientspace(s) === s
+        @test_throws ArgumentError alloc(Float64, 2)
+        @test_throws ArgumentError Allocating(square!)(x)
+        @test_throws ArgumentError scratchspace(() -> nothing)
+
+        # withspace binds for the dynamic extent, and only that extent
+        withspace(s) do
+            @test ambientspace() === s
+            @test alloc(Float64, 2, 3) isa Matrix{Float64}
+            @test alloc(Undef(x)) isa Vector{Float64}
+            @test Allocating(square!)(x).y == x .* x
+        end
+        @test_throws ArgumentError ambientspace()
+
+        # zero-arg scratchspace: a frame on the ambient space, itself rebound
+        # as ambient — the ambient space is always the innermost open frame
+        a = Arena(Vector{UInt8}(undef, 4096); alignment = 8)
+        withspace(a) do
+            base = alloc(Float64, 4)                   # ambient = the arena itself
+            scratchspace() do
+                @test ambientspace() isa Pol.Frame
+                tmp = alloc(Float64, 4)
+                @test a.offset == 2n
+                scratchspace() do                      # nesting: innermost wins
+                    alloc(Float64, 4)
+                    @test a.offset == 3n
+                end
+                @test a.offset == 2n                   # inner frame retracted
+            end
+            @test a.offset == n                        # only base survives
+
+            # ambient Allocating ≡ explicit: outputs live in the ambient
+            # space, defaulted scratch in the wrapper's frame
+            out = Allocating(scaled!)(x)
+            @test out.y == x .* 2
+            @test a.offset == 2n                       # y kept, scratch retracted
+        end
+
+        # the explicit form rebinds too — the frame argument is the
+        # concretely-typed spelling of the same space, not a different one
+        scratchspace(s) do frame
+            @test ambientspace() === frame
+        end
+        @test_throws ArgumentError ambientspace()
     end
 
     @testset "arena: carve mechanics" begin
@@ -339,11 +462,51 @@ Pol.release!(f::Freeable) = f.freed[] = true
         @test all(Array(reinterpret(Float32, slab[1:24])) .== 2f0)
     end
 
+    @testset "capture: GC spaces refuse, arenas carve" begin
+        # A device that is recording a graph capture. The real answer comes
+        # from CUDACoreExt (`is_capturing(stream())`); the guard dispatches on
+        # the exemplar, so a mock array exercises the whole doctrine on CPU.
+        x = Recording(rand(Float32, 8))
+
+        @test !Pol.capturing(rand(Float32, 8))     # a CPU array never captures
+        @test !Pol.capturing(jl(rand(Float32, 4))) # nor a backend without an answer
+        @test Pol.capturing(x)
+
+        # a GC-owned space refuses: allocating here would record a memory node
+        # into the graph instead of failing, which is the whole hazard
+        @test_throws Pol.CaptureViolation alloc(Similar(x), Float32, (4,))
+        @test_throws Pol.CaptureViolation scratchspace(Similar(x)) do frame
+            alloc(frame, Float32, (4,))            # a frame inherits its space's answer
+        end
+
+        # the error names the type and shape it refused, and says what to do
+        err = try; alloc(Similar(x), Float32, (2, 3)); catch e; e; end
+        msg = sprint(showerror, err)
+        @test occursin("Float32(2, 3)", msg)
+        @test occursin("Arena", msg)
+
+        # an arena carves regardless: offset arithmetic over a slab allocated
+        # long before capture began records nothing
+        arena = Arena(zeros(UInt8, 1 << 16))
+        @test alloc(arena, Float32, (4,)) isa AbstractArray{Float32,1}
+        scratchspace(arena) do frame
+            @test alloc(frame, Float32, (4,)) isa AbstractArray{Float32,1}
+        end
+
+        # and the property replay actually depends on: identical allocation
+        # sequences yield identical addresses
+        addrs(a) = (reset!(a); [UInt(pointer(alloc(a, Float32, (i,)))) for i in 1:4])
+        @test addrs(arena) == addrs(arena)
+    end
+
     @testset "visibility" begin
         # the shell vocabulary is exported: what a verb definition spends
         for name in (:Undef, :Similar, :Arena, :scratchspace,
                      :outputs, :checkpoints, :scratch)
             @test Republic.isexported(Pol, name)
+        end
+        for name in (:capturing, :CaptureViolation)
+            @test Republic.ispublic(Pol, name)
         end
         # the machinery is public, not exported: reached qualified
         for name in (:Space, :Frame, :alloc, :Mark, :reset!, :watermark, :mark,
