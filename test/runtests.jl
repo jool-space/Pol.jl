@@ -6,6 +6,7 @@ using Test
 
 using Republic
 using JLArrays: JLArray, jl   # the GPUArrays reference array: loads GPUArraysExt
+import CUDACore               # loads CUDACoreExt; capture tests gate on functional()
 
 # An array on a device that is mid-capture. Stands in for a `CuArray` while a
 # stream capture is recording — the real predicate lives in Pol's CUDACoreExt,
@@ -510,6 +511,53 @@ Pol.release!(f::Freeable) = f.freed[] = true
         # sequences yield identical addresses
         addrs(a) = (reset!(a); [UInt(pointer(alloc(a, Float32, (i,)))) for i in 1:4])
         @test addrs(arena) == addrs(arena)
+    end
+
+    # the real device answering what the Recording mock stands in for
+    if CUDACore.functional()
+        @testset "capture: CUDA ground truth" begin
+            x = CUDACore.zeros(Float32, 8)
+            @test !Pol.capturing(x)
+
+            # warm up outside capture: a kernel's first launch loads its
+            # module, which capture forbids
+            let t = similar(x); t .= 1f0; x .+= t end
+
+            # the predicate flips during a live recording, and a GC space
+            # refuses exactly there
+            CUDACore.capture() do
+                @test Pol.capturing(x)
+                @test_throws Pol.CaptureViolation alloc(Similar(x), Float32, (8,))
+            end
+            @test !Pol.capturing(x)
+
+            # an arena-framed step captures and replays: carves record
+            # nothing, frames retract, replays accumulate
+            a = Arena(CUDACore.zeros(UInt8, 1 << 12))
+            step!() = scratchspace(a) do frame
+                t = alloc(frame, Float32, (8,))
+                t .= 1f0
+                x .+= t
+            end
+            step!(); step!()                       # warm kernels and pools
+            x .= 0f0
+            exec = CUDACore.instantiate(CUDACore.capture(step!))
+            CUDACore.launch(exec); CUDACore.launch(exec)
+            CUDACore.synchronize()
+            @test Array(x) == fill(2f0, 8)
+            @test a.offset == 0                    # every frame retracted
+
+            # the ground truth behind CaptureViolation: a raw pool alloc
+            # records a memory node — the graph launches once, then refuses
+            x .= 0f0
+            g = CUDACore.capture() do
+                t = similar(x); t .= 1f0; x .+= t
+            end
+            leaky = CUDACore.instantiate(g)
+            CUDACore.launch(leaky); CUDACore.synchronize()
+            @test Array(x) == fill(1f0, 8)         # the launch that lulls
+            @test_throws CUDACore.CuError CUDACore.launch(leaky)
+        end
     end
 
     @testset "visibility" begin

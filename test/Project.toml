@@ -1,9 +1,11 @@
 [deps]
+CUDACore = "bd0ed864-bdfe-4181-a5ed-ce625a5fdea2"
 JLArrays = "27aeb0d3-9eb9-45fb-866b-73c2ecf80fcb"
 Pol = "4d414b72-cacd-4c1f-bb87-6585853948d5"
 Republic = "27243419-9dde-4721-b67c-fd63626fea7f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
+CUDACore = "6"
 JLArrays = "0.3"
 Republic = "2.3"
