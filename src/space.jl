@@ -20,7 +20,7 @@ alloc(space::Space, ::Type{T}, dims::Integer...) where {T} = alloc(space, T, Dim
 
 # ── the ambient space ────────────────────────────────────────────────────────
 
-using Base.ScopedValues: ScopedValue, with
+using ScopedValues: ScopedValue, with
 
 # The ambient Space, read by `currentspace` and every ambient method.
 # Dynamic scope is the right model here: a frame's buffers are valid exactly
