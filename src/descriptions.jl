@@ -38,10 +38,6 @@ alloc(space::Space, u::Undef{T}) where {T} = alloc(space, T, u.dims)
 alloc(space::Space, spec::NamedTuple) = map(u -> alloc(space, u), spec)
 alloc(::Space, x::AbstractArray) = x
 
-# ambient forms (see `withspace`)
-alloc(u::Undef) = alloc(ambientspace(), u)
-alloc(spec::NamedTuple) = alloc(ambientspace(), spec)
-
 """
     outputs(f, args...; kwargs...) -> NamedTuple
     outputs(space, f, args...; kwargs...)

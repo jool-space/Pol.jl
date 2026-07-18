@@ -48,6 +48,9 @@ Pol.outputs(::typeof(scaled!), x) = (; y = Undef(x))
 Pol.scratch(::typeof(scaled!), x) = (; tmp = Undef(x))
 Pol.@takes_space scaled!
 
+# a space with no leaf method: exercises the ambient catch-all's loop guard
+struct NoLeaf <: Pol.Space end
+
 # a GPU-like array family: eager reclamation via release!, observably
 struct Freeable{T,N} <: AbstractArray{T,N}
     data::Array{T,N}
@@ -197,14 +200,24 @@ Pol.release!(f::Freeable) = f.freed[] = true
         @test_throws ArgumentError Allocating(square!)(x)
         @test_throws ArgumentError scratchspace(() -> nothing)
 
-        # withspace binds for the dynamic extent, and only that extent
+        # withspace binds for the dynamic extent, and only that extent;
+        # every explicit alloc spelling forwards through one catch-all
         withspace(s) do
             @test ambientspace() === s
             @test alloc(Float64, 2, 3) isa Matrix{Float64}
             @test alloc(Undef(x)) isa Vector{Float64}
+            nt = alloc((; fresh = Undef(Float64, 2), owned = x))
+            @test nt.fresh isa Vector{Float64} && nt.owned === x
             @test Allocating(square!)(x).y == x .* x
         end
         @test_throws ArgumentError ambientspace()
+
+        # a Space-first call that matches no explicit method is a
+        # MethodError, not a trip through the ambient form
+        @test_throws MethodError alloc(NoLeaf(), Float32, (2,))
+        withspace(s) do
+            @test_throws MethodError alloc(NoLeaf(), Float32, (2,))
+        end
 
         # zero-arg scratchspace: a frame on the ambient space, itself rebound
         # as ambient — the ambient space is always the innermost open frame

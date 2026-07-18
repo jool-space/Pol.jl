@@ -43,7 +43,7 @@ form with [`ambientspace`](@ref).
 ```@docs
 withspace
 ambientspace
-alloc(::Type{T}, dims::Dims) where {T}
+alloc(args...)
 ```
 
 ## Capture safety

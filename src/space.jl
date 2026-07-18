@@ -62,10 +62,16 @@ ambientspace() = @something(SPACE[],
 ambientspace(default) = @something(SPACE[], default)
 
 """
-    alloc(T, dims)
-    alloc(T, dims...)
+    alloc(args...)
 
-Materialize from the ambient space: `alloc(ambientspace(), T, dims)`.
+The ambient form: any `alloc` call without a leading space forwards to
+`alloc(ambientspace(), args...)` — every explicit spelling (`T, dims`,
+an [`Undef`](@ref), a `NamedTuple` spec) has its ambient counterpart
+through this one method.
 """
-alloc(::Type{T}, dims::Dims) where {T} = alloc(ambientspace(), T, dims)
-alloc(::Type{T}, dims::Integer...) where {T} = alloc(ambientspace(), T, Dims(dims))
+alloc(args...) = alloc(ambientspace(), args...)
+
+# A Space-first call that matched no explicit method must not fall through
+# to the ambient form (alloc(ambient, space, ...) — a loop, or nonsense);
+# fail as the missing method it is.
+alloc(space::Space, args...) = throw(MethodError(alloc, (space, args...)))
