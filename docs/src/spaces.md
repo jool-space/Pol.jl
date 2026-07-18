@@ -31,3 +31,24 @@ reset!
 watermark
 carve
 ```
+
+## The ambient space
+
+The explicit space-first forms are the primitives; a dynamically-scoped
+binding removes the plumbing where it is noise. Every ambient method —
+`alloc(T, dims...)`, an [`Allocating`](@ref) verb called without a leading
+space, a [`scratchspace`](@ref) block's defaults — forwards to its explicit
+form with [`ambientspace`](@ref).
+
+```@docs
+withspace
+ambientspace
+alloc(args...)
+```
+
+## Capture safety
+
+```@docs
+capturing
+CaptureViolation
+```

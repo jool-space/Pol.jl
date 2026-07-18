@@ -18,6 +18,7 @@ makedocs(;
             "Spaces" => "spaces.md",
             "Scratchspaces" => "scratchspaces.md",
             "Descriptions" => "descriptions.md",
+            "Verbs" => "verbs.md",
             "Shadows" => "shadows.md",
         ],
         "API reference" => "reference.md",
