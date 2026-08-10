@@ -258,9 +258,9 @@ Pol.release!(f::Freeable) = f.freed[] = true
         @test v isa Matrix{Float32} && size(v) == (2, 3)  # Vector slab: native carve
         @test a.offset == sizeof(Float32) * 6
 
-        # the carve aliases the slab's bytes
+        # the carve aliases the slab's bytes, above the base pad
         v .= 1.0f0
-        @test all(reinterpret(Float32, view(a.slab, 1:24)) .== 1.0f0)
+        @test all(reinterpret(Float32, view(a.slab, a.pad .+ (1:24))) .== 1.0f0)
 
         # alignment: each carve starts at the next 256 boundary
         w = alloc(a, UInt8, 3)
@@ -296,6 +296,29 @@ Pol.release!(f::Freeable) = f.freed[] = true
         alloc(p, UInt8, 1)
         @test p.offset == 4096 + 1
         @test_throws ArgumentError Arena(Vector{UInt8}(undef, 64); alignment = 3)
+    end
+
+    @testset "arena: absolute alignment via the base pad" begin
+        # a Vector's base is only 16/64-aligned; the pad makes carves absolute
+        a = Arena(Vector{UInt8}(undef, 4096))
+        @test a.pad == mod(-Pol.slabbase(a.slab), UInt(256))
+        v = alloc(a, Float32, 4)
+        w = alloc(a, Float64, 2)
+        @test UInt(pointer(v)) % 256 == 0
+        @test UInt(pointer(w)) % 256 == 0
+
+        # no readable base: pad is zero, the relative contract stands
+        s = view(Vector{UInt8}(undef, 64), 1:64)
+        @test Pol.slabbase(s) === nothing
+        @test Arena(s).pad == 0
+
+        # the pad rides on top of the ceiling: a slab that holds the bytes
+        # but not the pad still throws
+        tight = Arena(Vector{UInt8}(undef, 256); alignment = 256)
+        if tight.pad > 0
+            @test_throws ArgumentError alloc(tight, UInt8, 256 - tight.pad + 1)
+        end
+        @test_throws ArgumentError alloc(tight, UInt8, 257)
     end
 
     @testset "arena: watermark" begin
@@ -473,7 +496,7 @@ Pol.release!(f::Freeable) = f.freed[] = true
         u = alloc(a, Float32, 2, 3)
         @test u isa JLArray{Float32,2} && size(u) == (2, 3)
         u .= 2f0
-        @test all(Array(reinterpret(Float32, slab[1:24])) .== 2f0)
+        @test all(Array(reinterpret(Float32, slab[a.pad .+ (1:24)])) .== 2f0)
     end
 
     @testset "capture: GC spaces refuse, arenas carve" begin

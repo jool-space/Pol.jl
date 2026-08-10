@@ -30,6 +30,7 @@ retract!
 reset!
 watermark
 carve
+slabbase
 ```
 
 ## The ambient space

@@ -19,21 +19,33 @@ device was recording a graph capture.
 The allocation does not fail, and that is the problem. A device allocator is
 *stream-ordered*, so allocating under capture is recorded into the graph as a
 memory node — capture succeeds, instantiation succeeds, and **the first launch
-succeeds**. The second launch fails:
+succeeds**. What happens after that depends on where the matching free landed:
 
-    ERROR: CUDA error: invalid argument (code 1, ERROR_INVALID_VALUE)
+- **Freed outside the captured region, or not at all** — a no-op `release!`,
+  a frame that closes after capture ends, a buffer that escaped its frame:
+  the allocation node has no paired free node, and a graph whose previous
+  launch's allocations are still outstanding cannot be relaunched:
 
-A graph holding an allocation node whose memory is not freed *within the graph*
-cannot be relaunched until that memory is freed — and replay is the whole
-reason the graph exists. So the error lands on exactly the operation the
-capture was built to perform, names nothing useful, and survives any smoke test
-that launches once. Freeing inside the captured region does not rescue it
-either: the free path errors during capture.
+      ERROR: CUDA error: invalid argument (code 1, ERROR_INVALID_VALUE)
 
-(A lesser hazard rides along: if the pool is exhausted, the allocator escalates
-to reclaim, which device-synchronizes — and synchronizing under capture
-invalidates the capture outright. That fires only under memory pressure, so it
-is the same class of bug, deferred further.)
+  The error lands on the second launch — the replay the graph exists for —
+  names nothing useful, comes and goes with finalizer timing, and survives
+  any smoke test that launches once.
+
+- **Freed inside the captured region**: the free is recorded too, the nodes
+  pair, and replay is legal — a `scratchspace` block enclosed whole by the
+  capture, `release!` freeing eagerly, does replay correctly. But it stands
+  on ground the stack does not promise: CUDA.jl documents allocations as
+  non-capturable (capture disables GC for that reason) and the driver is
+  doing the rescuing; every replay pays the allocation node's map/unmap; a
+  re-capture records fresh addresses. And if the pool is exhausted
+  mid-capture, the allocator escalates to reclaim, which device-synchronizes
+  — invalidating the capture outright, with GC disabled so Julia-side
+  reclamation cannot intervene.
+
+So the split is structural, not situational: one shape fails on exactly the
+operation the capture was built to perform, the other works by grace of the
+driver. Neither is a foundation.
 
 The capture-safe space is an [`Arena`](@ref): a carve is offset arithmetic over
 a slab allocated long before capture began, so it records nothing into the
