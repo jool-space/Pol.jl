@@ -14,7 +14,7 @@ export Similar
 
 include("Arena.jl")
 export Arena
-@public Mark, reset!, watermark, mark, retract!, carve
+@public Mark, reset!, watermark, mark, retract!, carve, slabbase
 
 include("scratchspace.jl")
 export scratchspace

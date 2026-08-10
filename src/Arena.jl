@@ -7,26 +7,52 @@ in bulk, and nothing tracks individual allocations. The arena never grows —
 allocating past the end of the slab throws — and identical allocation
 sequences yield identical addresses, which is what graph capture requires.
 
-`alignment` (a power of two) is where each carve starts, **relative to the
-slab's first byte**; a carve additionally never starts below its element
-type's own alignment. Absolute alignment therefore also depends on the
-slab's base: CUDA allocators return 256-aligned bases (so the default meets
-cuBLASLt's workspace requirement), a Julia `Vector`'s base is only 32/64,
-`Mmap.mmap`'s is page-aligned.
+`alignment` (a power of two) is where each carve starts; a carve
+additionally never starts below its element type's own alignment. When the
+slab's storage exposes a base address ([`slabbase`](@ref)), the arena pads
+its origin so that alignment is *absolute*: every carve's address is
+divisible by `alignment` no matter where the slab landed, at a one-time
+cost of at most `alignment - 1` slab bytes. CUDA allocators return
+256-aligned bases — the pad is zero and the default meets cuBLASLt's
+workspace requirement — while a Julia `Vector`'s base is only 16/64-aligned,
+so the pad is what makes a CPU arena's carves truly 256-aligned. Storage
+with no readable base (`slabbase` returning `nothing`) keeps the relative
+contract: carves are aligned relative to the slab's first byte only.
 
 Arenas are task-local, so they take no locks.
 """
 mutable struct Arena{S<:AbstractVector{UInt8}} <: Space
     const slab::S
     const alignment::Int
+    const pad::Int
     offset::Int
     watermark::Int
     epoch::Int
 end
 
+"""
+    slabbase(slab) -> Union{Nothing, UInt}
+
+The absolute address of a slab's first byte, or `nothing` when the storage
+exposes none. An [`Arena`](@ref) pads its origin by `-slabbase mod
+alignment`, which is what turns relative alignment into absolute. The
+generic method answers `nothing` — no pad, the relative contract — and
+dense vectors answer their `pointer`; a new storage family overloads this
+alongside [`carve`](@ref). The address is virtual, and that is the right
+notion: every consumer of alignment — an API contract, a vectorized load —
+checks the virtual address, and pages map whole, so virtual and physical
+agree modulo the page size, far above any alignment an arena is asked for.
+A storage whose base can move must answer `nothing`: a pad computed from a
+stale base is misalignment, silently.
+"""
+slabbase(::AbstractVector{UInt8}) = nothing
+slabbase(slab::DenseVector{UInt8}) = UInt(pointer(slab))
+
 function Arena(slab::AbstractVector{UInt8}; alignment::Integer = 256)
     ispow2(alignment) || throw(ArgumentError("alignment must be a power of two, got $alignment"))
-    return Arena(slab, Int(alignment), 0, 0, 0)
+    base = slabbase(slab)
+    pad = base === nothing ? 0 : Int(mod(-base, UInt(alignment)))
+    return Arena(slab, Int(alignment), pad, 0, 0, 0)
 end
 
 align(offset::Int, alignment::Int) = (offset + (alignment - 1)) & -alignment
@@ -84,8 +110,10 @@ end
     watermark(arena) -> Int
 
 The peak offset ever reached — the measured byte requirement of everything
-run against this arena. Survives [`reset!`](@ref), so it accumulates over
-all passes of a warmup.
+run against this arena, not counting the arena's base pad. Survives
+[`reset!`](@ref), so it accumulates over all passes of a warmup. When
+sizing a fresh slab from a watermark, add `alignment` slack: a
+differently-based slab pads differently.
 """
 watermark(a::Arena) = a.watermark
 
@@ -95,19 +123,21 @@ watermark(a::Arena) = a.watermark
 Carve a `dims`-shaped array of bitstype `T` from the arena: round the offset
 up to the arena's alignment (never below `T`'s own), take the next
 `sizeof(T) * prod(dims)` bytes as a typed array (see [`carve`](@ref)),
-advance the offset, update the watermark. Throws past the end of the slab.
-The offset advance is source state, like an RNG's — hence no `!`.
+advance the offset, update the watermark. Offsets count from the arena's
+padded origin, so the pad rides on top of the ceiling. Throws past the end
+of the slab. The offset advance is source state, like an RNG's — hence no
+`!`.
 """
 function alloc(a::Arena, ::Type{T}, dims::Dims) where T
     isbitstype(T) || throw(ArgumentError("an arena carves bitstypes only, got $T"))
     start = align(a.offset, max(a.alignment, Base.datatype_alignment(T)))
     nbytes = sizeof(T) * prod(dims)
     stop = start + nbytes
-    stop <= length(a.slab) ||
-        throw(ArgumentError("arena ceiling: need $stop bytes ($nbytes for $T$dims), slab holds $(length(a.slab)) — raise the budget"))
+    a.pad + stop <= length(a.slab) ||
+        throw(ArgumentError("arena ceiling: need $(a.pad + stop) bytes ($nbytes for $T$dims on a $(a.pad)-byte base pad), slab holds $(length(a.slab)) — raise the budget"))
     a.offset = stop
     a.watermark = max(a.watermark, stop)
-    return carve(a.slab, start, T, dims)
+    return carve(a.slab, a.pad + start, T, dims)
 end
 
 """
