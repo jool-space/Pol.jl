@@ -7,5 +7,5 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 CUDACore = "6"
-JLArrays = "0.3"
+JLArrays = "0.3, 0.4"
 Republic = "2.3"
